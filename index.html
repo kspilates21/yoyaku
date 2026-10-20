@@ -135,16 +135,14 @@ function route(data) {
 
 function renderRegister() {
   const name = el('input', { autocomplete: 'name', placeholder: '例：山田 花子' });
-  const phone = el('input', { type: 'tel', autocomplete: 'tel', placeholder: '例：090-1234-5678' });
   show(
     el('h1', {}, 'はじめに'),
     el('div', { class: 'card' },
-      el('div', { class: 'muted' }, 'はじめの1回だけ、お名前と電話番号を登録してください。スタジオで確認したら、予約と回数券の確認ができるようになります。'),
+      el('div', { class: 'muted' }, 'はじめの1回だけ、お名前を登録してください。スタジオで確認したら、予約と回数券の確認ができるようになります。'),
       el('label', {}, 'お名前'), name,
-      el('label', {}, '電話番号'), phone,
       el('div', { style: 'height:16px' }),
       el('button', { class: 'primary', onclick: async () => {
-        try { loading('送っています…'); route(await api('register', { name: name.value, phone: phone.value })); }
+        try { loading('送っています…'); route(await api('register', { name: name.value })); }
         catch (e) { renderRegister(); toast(e.message); }
       } }, '登録する')));
 }
