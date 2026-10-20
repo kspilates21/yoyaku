@@ -42,6 +42,8 @@
   .sheet .actions { display: flex; gap: 8px; margin-top: 16px; }
   .sheet .actions button { flex: 1; }
   .cancel-btn { background: var(--soft); color: var(--ink); }
+  .outline { background: transparent; color: var(--accent); border: 1px solid var(--accent); padding: 6px 12px; font-size: 14px; }
+  .actions-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
   .demo { background: var(--warn-soft); color: var(--warn); font-size: 13px; padding: 6px 10px; border-radius: 8px; margin-bottom: 12px; }
   .center { text-align: center; padding: 48px 0; }
 </style>
@@ -153,28 +155,31 @@ function ticketCard(t) {
     el('div', { class: 'row' },
       el('strong', {}, t.type),
       t.expired ? el('span', { class: 'tag warn' }, '期限切れ') :
-        t.remaining === 0 ? el('span', { class: 'tag warn' }, '使い切り') : null),
+        t.notYetBought ? el('span', { class: 'tag' }, '次の回数券') :
+        t.remaining === 0 ? el('span', { class: 'tag warn' }, '残りはご予約済み') : null),
     el('div', { class: 'row', style: 'margin-top:8px' },
       el('div', {}, el('span', { class: 'muted' }, '残り '), el('span', { class: 'big' }, t.remaining), el('span', { class: 'muted' }, ' / ' + t.count + '回')),
       el('div', { class: 'muted', style: 'text-align:right' },
         t.expiry ? el('div', {}, '期限 ', el('strong', { style: 'color:var(--ink)' }, t.expiry)) : null,
-        el('div', {}, t.purchased + ' ご購入'))),
+        t.purchased ? el('div', {}, t.purchased + ' ご購入') : null)),
     el('div', { class: 'bar' }, el('i', { class: 'done', style: 'width:' + pct(t.done) }), el('i', { class: 'booked', style: 'width:' + pct(t.booked) })),
     el('div', { class: 'muted' }, '受講 ' + t.done + '回・予約中 ' + t.booked + '回'));
 }
 
 function bookingCard(b) {
-  return el('div', { class: 'card row' },
-    el('div', {},
-      el('div', { style: 'font-weight:600' }, b.day + ' ' + b.time + '〜'),
-      el('div', { class: 'muted' }, b.type ? b.type + (b.no ? '（' + b.no + '回目）' : '') : 'チケットはスタジオで確認します')),
+  const when = b.day + ' ' + (b.time ? b.time + '〜' : '');
+  return el('div', { class: 'card' },
+    el('div', { style: 'font-weight:600' }, when),
+    el('div', { class: 'muted' }, b.type ? b.type + (b.no ? '（' + b.no + (b.count > 1 ? '/' + b.count : '') + '回目）' : '') : 'チケットはスタジオで確認します'),
     b.canCancel
-      ? el('button', { class: 'ghost', onclick: async () => {
-          if (!await ask('キャンセルしますか？', b.day + ' ' + b.time + '〜', 'キャンセルする')) return;
-          try { loading('キャンセルしています…'); route(await api('cancel', { id: b.id })); }
-          catch (e) { renderHome(); toast(e.message); }
-        } }, 'キャンセル')
-      : el('span', { class: 'muted' }, '締め切り後'));
+      ? el('div', { class: 'actions-row' },
+          el('button', { class: 'outline', onclick: () => renderSlots(b) }, '日時を変更'),
+          el('button', { class: 'ghost', onclick: async () => {
+            if (!await ask('キャンセルしますか？', when, 'キャンセルする')) return;
+            try { loading('キャンセルしています…'); route(await api('cancel', { id: b.id })); }
+            catch (e) { renderHome(); toast(e.message); }
+          } }, 'キャンセル'))
+      : el('div', { class: 'muted', style: 'margin-top:8px' }, b.time ? '締め切りを過ぎたので、変更・キャンセルは LINE でご連絡ください' : '変更・キャンセルは LINE でご連絡ください'));
 }
 
 function renderHome() {
@@ -187,10 +192,12 @@ function renderHome() {
     s.bookings.length ? s.bookings.map(bookingCard) : el('div', { class: 'card muted' }, '今のご予約はありません'),
     el('div', { style: 'height:8px' }),
     el('button', { class: 'primary', onclick: renderSlots }, '予約する'),
-    s.cancelHours > 0 ? el('p', { class: 'muted' }, 'キャンセルは開始の' + s.cancelHours + '時間前まで、この画面からできます。') : null);
+    s.cancelHours > 0 ? el('p', { class: 'muted' }, '変更・キャンセルは開始の' + s.cancelHours + '時間前まで、この画面からできます。') : null);
 }
 
-async function renderSlots() {
+// 予約する・日時を変更する（{from} が変更前の予約）
+async function renderSlots(from) {
+  from = from && from.id ? from : null;
   loading('空いている枠を探しています…');
   let slots;
   try { slots = (await api('slots')).slots; } catch (e) { renderHome(); return toast(e.message); }
@@ -198,11 +205,19 @@ async function renderSlots() {
   slots.forEach(s => (byDay[s.day] = byDay[s.day] || []).push(s));
   show(
     el('button', { class: 'back', onclick: renderHome }, '← もどる'),
-    el('h1', {}, '日時を選ぶ'),
+    el('h1', {}, from ? '新しい日時を選ぶ' : '日時を選ぶ'),
+    from ? el('div', { class: 'card muted' }, '今のご予約：' + from.day + ' ' + from.time + '〜') : null,
     slots.length ? Object.entries(byDay).map(([day, list]) => [
       el('h2', {}, day),
       el('div', { class: 'slots' }, list.map(s => el('button', { onclick: async () => {
-        if (!await ask('この日時で予約しますか？', s.day + ' ' + s.time + '〜', '予約する')) return;
+        const to = s.day + ' ' + s.time + '〜';
+        if (from) {
+          if (!await ask('この日時に変更しますか？', from.day + ' ' + from.time + '〜 → ' + to, '変更する')) return;
+          try { loading('変更しています…'); route(await api('change', { id: from.id, start: s.start })); }
+          catch (e) { toast(e.message); renderSlots(from); }
+          return;
+        }
+        if (!await ask('この日時で予約しますか？', to, '予約する')) return;
         try { loading('予約しています…'); route(await api('book', { start: s.start })); }
         catch (e) { toast(e.message); renderSlots(); }
       } }, s.time)))
