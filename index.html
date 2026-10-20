@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ご予約・回数券</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  :root {
+    --bg: #f6f5f1; --card: #fff; --ink: #2f3a33; --muted: #7a847d; --line: #e4e2db;
+    --accent: #5f7f68; --accent-ink: #fff; --soft: #e8efe9; --warn: #b5643f; --warn-soft: #f8ece6;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif; font-size: 16px; line-height: 1.6; }
+  main { max-width: 520px; margin: 0 auto; padding: 20px 16px 96px; }
+  h1 { font-size: 20px; margin: 4px 0 16px; }
+  h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin: 24px 0 8px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .big { font-size: 28px; font-weight: 700; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .bar { height: 8px; background: var(--soft); border-radius: 4px; overflow: hidden; margin: 10px 0 6px; display: flex; }
+  .bar i { display: block; height: 100%; }
+  .bar .done { background: var(--accent); } .bar .booked { background: #a9c1ae; }
+  .tag { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 10px; background: var(--soft); color: var(--accent); }
+  .tag.warn { background: var(--warn-soft); color: var(--warn); }
+  button { font: inherit; border: 0; border-radius: 12px; padding: 12px 16px; cursor: pointer; }
+  .primary { background: var(--accent); color: var(--accent-ink); width: 100%; font-weight: 600; }
+  .ghost { background: transparent; color: var(--warn); border: 1px solid var(--warn); padding: 6px 12px; font-size: 14px; }
+  .back { background: transparent; color: var(--accent); padding: 4px 0; }
+  .slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .slots button { background: var(--card); border: 1px solid var(--line); color: var(--ink); padding: 10px 0; }
+  label { display: block; font-size: 14px; color: var(--muted); margin: 12px 0 4px; }
+  input { width: 100%; font: inherit; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); }
+  .toast { position: fixed; left: 16px; right: 16px; bottom: 24px; max-width: 488px; margin: 0 auto; background: var(--ink); color: #fff;
+    padding: 12px 16px; border-radius: 12px; font-size: 15px; opacity: 0; transform: translateY(8px); transition: .2s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: none; }
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; align-items: flex-end; justify-content: center; padding: 16px; }
+  .modal.show { display: flex; }
+  .sheet { background: var(--card); border-radius: 16px; padding: 20px 16px 16px; width: 100%; max-width: 488px; }
+  .sheet .actions { display: flex; gap: 8px; margin-top: 16px; }
+  .sheet .actions button { flex: 1; }
+  .cancel-btn { background: var(--soft); color: var(--ink); }
+  .demo { background: var(--warn-soft); color: var(--warn); font-size: 13px; padding: 6px 10px; border-radius: 8px; margin-bottom: 12px; }
+  .center { text-align: center; padding: 48px 0; }
+</style>
+</head>
+<body>
+<main id="app"><div class="center muted">読み込み中…</div></main>
+<div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ここを書きかえる（作り方.md の手順で出てくる2つ）
+const CONFIG = {
+  LIFF_ID: '2012122503-5qofE0XU',  // LINE Developers の LIFF ID
+  API_URL: 'https://script.google.com/macros/s/AKfycby9YSQQD-oZrZcLHkX0AXrpJYNrxFB2-smI0yVLpYZcgHnY3nyffpC764c-BJEDLKCgRQ/exec',  // Apps Script のウェブアプリの URL（…/exec）
+};
+
+const params = new URLSearchParams(location.search);
+const DEMO = params.get('demo'); // ?demo=hanako のように開くと、架空のお客様として試せる
+const API_URL = params.get('api') || CONFIG.API_URL;
+let idToken = null;
+let state = null;
+
+const $app = document.getElementById('app');
+const el = (tag, attrs, ...kids) => {
+  const e = document.createElement(tag);
+  Object.entries(attrs || {}).forEach(([k, v]) => k.startsWith('on') ? e.addEventListener(k.slice(2), v) : e.setAttribute(k, v));
+  kids.flat().forEach(k => k != null && e.append(k instanceof Node ? k : document.createTextNode(String(k))));
+  return e;
+};
+const show = (...nodes) => {
+  const banner = DEMO ? el('div', { class: 'demo' }, 'デモ：架空のお客様「' + DEMO + '」で動いています') : null;
+  $app.replaceChildren(...[banner, nodes].flat(Infinity).filter(n => n != null));
+};
+const loading = text => show(el('div', { class: 'center muted' }, text || '読み込み中…'));
+
+function toast(text) {
+  const t = document.getElementById('toast');
+  t.textContent = text; t.classList.add('show');
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// 確かめる画面。OK なら true
+function ask(title, body, okLabel) {
+  return new Promise(resolve => {
+    const m = document.getElementById('modal');
+    const done = v => { m.classList.remove('show'); resolve(v); };
+    document.getElementById('sheet').replaceChildren(
+      el('div', { class: 'big', style: 'font-size:18px' }, title),
+      el('div', { class: 'muted', style: 'margin-top:6px' }, body),
+      el('div', { class: 'actions' },
+        el('button', { class: 'cancel-btn', onclick: () => done(false) }, 'もどる'),
+        el('button', { class: 'primary', onclick: () => done(true) }, okLabel)));
+    m.classList.add('show');
+  });
+}
+
+async function api(action, data) {
+  const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(Object.assign({ action, idToken }, data)) });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error);
+  return json.data;
+}
+
+async function start() {
+  if (!API_URL) return show(el('div', { class: 'card' }, '設定がまだです（API_URL が空です）'));
+  try {
+    if (DEMO) {
+      idToken = 'demo:' + DEMO;
+    } else {
+      await liff.init({ liffId: CONFIG.LIFF_ID });
+      if (!liff.isLoggedIn()) return liff.login();
+      idToken = liff.getIDToken();
+    }
+    route(await api('me'));
+  } catch (e) {
+    show(el('div', { class: 'card' }, e.message || '読み込めませんでした'));
+  }
+}
+
+function route(data) {
+  state = data;
+  if (data.message) toast(data.message);
+  if (data.status === '未登録') return renderRegister();
+  if (data.status === '確認待ち') return show(el('h1', {}, 'ご登録ありがとうございます'),
+    el('div', { class: 'card' }, 'スタジオで確認したら、ご予約できるようになります。少しお待ちください。'));
+  if (data.status !== 'OK') return show(el('div', { class: 'card' }, 'ただいまご利用いただけません。LINE でご連絡ください。'));
+  renderHome();
+}
+
+function renderRegister() {
+  const name = el('input', { autocomplete: 'name', placeholder: '例：山田 花子' });
+  const phone = el('input', { type: 'tel', autocomplete: 'tel', placeholder: '例：090-1234-5678' });
+  show(
+    el('h1', {}, 'はじめに'),
+    el('div', { class: 'card' },
+      el('div', { class: 'muted' }, 'はじめの1回だけ、お名前と電話番号を登録してください。スタジオで確認したら、予約と回数券の確認ができるようになります。'),
+      el('label', {}, 'お名前'), name,
+      el('label', {}, '電話番号'), phone,
+      el('div', { style: 'height:16px' }),
+      el('button', { class: 'primary', onclick: async () => {
+        try { loading('送っています…'); route(await api('register', { name: name.value, phone: phone.value })); }
+        catch (e) { renderRegister(); toast(e.message); }
+      } }, '登録する')));
+}
+
+function ticketCard(t) {
+  const pct = n => (n / t.count * 100) + '%';
+  return el('div', { class: 'card' },
+    el('div', { class: 'row' },
+      el('strong', {}, t.type),
+      t.expired ? el('span', { class: 'tag warn' }, '期限切れ') :
+        t.remaining === 0 ? el('span', { class: 'tag warn' }, '使い切り') : null),
+    el('div', { class: 'row', style: 'margin-top:8px' },
+      el('div', {}, el('span', { class: 'muted' }, '残り '), el('span', { class: 'big' }, t.remaining), el('span', { class: 'muted' }, ' / ' + t.count + '回')),
+      el('div', { class: 'muted', style: 'text-align:right' },
+        t.expiry ? el('div', {}, '期限 ', el('strong', { style: 'color:var(--ink)' }, t.expiry)) : null,
+        el('div', {}, t.purchased + ' ご購入'))),
+    el('div', { class: 'bar' }, el('i', { class: 'done', style: 'width:' + pct(t.done) }), el('i', { class: 'booked', style: 'width:' + pct(t.booked) })),
+    el('div', { class: 'muted' }, '受講 ' + t.done + '回・予約中 ' + t.booked + '回'));
+}
+
+function bookingCard(b) {
+  return el('div', { class: 'card row' },
+    el('div', {},
+      el('div', { style: 'font-weight:600' }, b.day + ' ' + b.time + '〜'),
+      el('div', { class: 'muted' }, b.type ? b.type + (b.no ? '（' + b.no + '回目）' : '') : 'チケットはスタジオで確認します')),
+    b.canCancel
+      ? el('button', { class: 'ghost', onclick: async () => {
+          if (!await ask('キャンセルしますか？', b.day + ' ' + b.time + '〜', 'キャンセルする')) return;
+          try { loading('キャンセルしています…'); route(await api('cancel', { id: b.id })); }
+          catch (e) { renderHome(); toast(e.message); }
+        } }, 'キャンセル')
+      : el('span', { class: 'muted' }, '締め切り後'));
+}
+
+function renderHome() {
+  const s = state;
+  show(
+    el('h1', {}, s.name + ' 様'),
+    el('h2', {}, '回数券'),
+    s.tickets.length ? s.tickets.map(ticketCard) : el('div', { class: 'card muted' }, 'お使いの回数券はありません'),
+    el('h2', {}, 'ご予約'),
+    s.bookings.length ? s.bookings.map(bookingCard) : el('div', { class: 'card muted' }, '今のご予約はありません'),
+    el('div', { style: 'height:8px' }),
+    el('button', { class: 'primary', onclick: renderSlots }, '予約する'),
+    s.cancelHours > 0 ? el('p', { class: 'muted' }, 'キャンセルは開始の' + s.cancelHours + '時間前まで、この画面からできます。') : null);
+}
+
+async function renderSlots() {
+  loading('空いている枠を探しています…');
+  let slots;
+  try { slots = (await api('slots')).slots; } catch (e) { renderHome(); return toast(e.message); }
+  const byDay = {};
+  slots.forEach(s => (byDay[s.day] = byDay[s.day] || []).push(s));
+  show(
+    el('button', { class: 'back', onclick: renderHome }, '← もどる'),
+    el('h1', {}, '日時を選ぶ'),
+    slots.length ? Object.entries(byDay).map(([day, list]) => [
+      el('h2', {}, day),
+      el('div', { class: 'slots' }, list.map(s => el('button', { onclick: async () => {
+        if (!await ask('この日時で予約しますか？', s.day + ' ' + s.time + '〜', '予約する')) return;
+        try { loading('予約しています…'); route(await api('book', { start: s.start })); }
+        catch (e) { toast(e.message); renderSlots(); }
+      } }, s.time)))
+    ]) : el('div', { class: 'card muted' }, '今は空いている枠がありません。LINE でご相談ください。'));
+}
+
+start();
+</script>
+</body>
+</html>
