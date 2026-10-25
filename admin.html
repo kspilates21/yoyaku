@@ -54,6 +54,13 @@
   .sheet .actions button { flex: 1; }
   .cancel-btn { background: var(--soft); color: var(--ink); }
   .preview { white-space: pre-wrap; background: var(--bg); border-radius: 10px; padding: 10px 12px; margin-top: 8px; font-size: 15px; }
+  .slotday { font-weight: 700; margin: 14px 0 6px; font-size: 15px; }
+  .slots { display: flex; flex-wrap: wrap; gap: 8px; }
+  .slots button { background: var(--soft); color: var(--accent); font-weight: 600; padding: 8px 12px; min-width: 72px; }
+  .sub { margin-top: 12px; padding: 10px 12px; background: var(--bg); border-radius: 10px; font-size: 14px; }
+  .custom { display: flex; gap: 8px; margin-top: 8px; }
+  .custom input, select { font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); }
+  .custom input { flex: 1; min-width: 0; }
 </style>
 </head>
 <body>
@@ -223,6 +230,7 @@ function actions(l, when) {
     const yes = await ask('受講済にしますか？', el('div', { class: 'muted', style: 'margin-top:6px' }, l.name + ' 様　' + when + '　' + ticketText(l)), '受講済にする');
     if (yes) write('adminDone', { target: l.target, reqId: newId() });
   } }, '受講済にする'));
+  if (l.state !== 'キャンセル') box.append(el('button', { class: 'outline', onclick: () => openBooking(l) }, '次回の予約を入れる'));
   if (!d) box.append(el('button', { class: 'outline', onclick: () => { drafts[key] = { text: '', reqId: newId() }; rerender(); } }, 'カルテを書く'));
   if (d) {
     const area = el('textarea', { placeholder: 'キーボードのマイクを押して話すと入力できます' });
@@ -246,6 +254,90 @@ function actions(l, when) {
     if (yes) write('adminUndo', { target: l.target, reqId: newId() });
   } }, '受講済を取り消す'));
   return box;
+}
+
+// ---- 次回の予約を入れる（空き枠から選ぶ／いつもの枠とずれた時間を入れる）----
+const sheetBox = () => document.getElementById('sheet');
+const modalBox = () => document.getElementById('modal');
+const closeModal = () => modalBox().classList.remove('show');
+const pad2 = n => ('0' + n).slice(-2);
+
+async function openBooking(l) {
+  if (busy) return;
+  sheetBox().replaceChildren(el('div', { class: 'center muted' }, '空き枠を読み込み中…'));
+  modalBox().classList.add('show');
+  let data;
+  try {
+    data = await api('adminSlots', { target: l.target });
+  } catch (e) {
+    closeModal();
+    return toast(e.message || '読み込めませんでした');
+  }
+  // 開くたびに番号を1つ。電波が悪くて2回送られても、1回だけ入る
+  pickSlot(l, data, { reqId: newId(), type: '', more: false });
+}
+
+function pickSlot(l, data, st) {
+  const choose = async (iso, label, regular) => {
+    const ticket = data.ticket ? data.ticket.type + '（今の残り' + data.ticket.remaining + '回）' : (st.type || 'チケット未入力（あとで入れる）');
+    const yes = await ask('この日時で入れますか？', [
+      el('div', { style: 'margin-top:8px;font-size:18px;font-weight:700' }, data.name + ' 様　' + label + '〜'),
+      el('div', { class: 'muted' }, ticket),
+      regular ? null : el('div', { class: 'sub' }, 'いつもの枠とずれた時間です。入れたあと、Google の予約ページの枠を直してください（直し方をメールで送ります）'),
+      el('div', { class: 'hint', style: 'margin-top:8px' }, '売上シートのレッスン記録に「予約」の行、カレンダーに90分の予定が入ります'),
+    ].filter(Boolean), '予約を入れる');
+    if (!yes) return pickSlot(l, data, st);
+    write('adminBook', { target: l.target, start: iso, type: data.ticket ? '' : st.type, reqId: st.reqId });
+  };
+
+  // 空き枠を日ごとに
+  const days = [];
+  data.slots.forEach(s => {
+    const d = days[days.length - 1];
+    if (d && d.day === s.day) d.slots.push(s); else days.push({ day: s.day, slots: [s] });
+  });
+  const shown = st.more ? days : days.slice(0, 14);
+
+  const typeSelect = el('select', { style: 'width:100%;margin-top:6px' },
+    el('option', { value: '' }, 'あとで入れる（チケット種別は空）'),
+    data.types.map(t => el('option', { value: t }, t)));
+  typeSelect.value = st.type;
+  typeSelect.addEventListener('change', () => { st.type = typeSelect.value; });
+
+  const today = new Date();
+  const dateIn = el('input', { type: 'date', value: today.getFullYear() + '-' + pad2(today.getMonth() + 1) + '-' + pad2(today.getDate()) });
+  const timeIn = el('input', { type: 'time', step: '600', value: '10:00' });
+
+  sheetBox().replaceChildren(...[
+    el('div', { class: 'row' },
+      el('div', { style: 'font-size:18px;font-weight:700' }, data.name + ' 様の次回'),
+      el('button', { class: 'reload', onclick: closeModal }, 'とじる')),
+    data.ticket
+      ? el('div', { class: 'muted' }, data.ticket.type + '（今の残り' + data.ticket.remaining + '回）で入ります')
+      : el('div', { class: 'sub' }, '使える回数券がありません（最終回のあと・1回もの）。新しいチケットが決まっていれば選んでください。購入記録はあとで Claude に頼んでください', typeSelect),
+    data.bookings.length
+      ? el('div', { class: 'sub' }, 'もう入っている予約：' + data.bookings.map(b => b.day + (b.time ? ' ' + b.time : '')).join('、'))
+      : null,
+    shown.length ? shown.map(d => [
+      el('div', { class: 'slotday' }, d.day),
+      el('div', { class: 'slots' }, d.slots.map(s => el('button', { onclick: () => choose(s.start, s.day + ' ' + s.time, true) }, s.time))),
+    ]) : el('div', { class: 'muted', style: 'margin-top:12px' }, '空き枠がありません'),
+    !st.more && days.length > shown.length
+      ? el('button', { class: 'reload', style: 'margin-top:10px', onclick: () => { st.more = true; pickSlot(l, data, st); } }, 'もっと先の日を見る')
+      : null,
+    el('div', { class: 'sub' },
+      el('div', { style: 'font-weight:600' }, 'ほかの時間（お客様のご希望で枠とずれるとき）'),
+      el('div', { class: 'custom' }, dateIn, timeIn),
+      el('button', { class: 'outline', style: 'margin-top:8px', onclick: () => {
+        const dm = dateIn.value.split('-').map(Number), tm = timeIn.value.split(':').map(Number);
+        if (dm.length !== 3 || tm.length < 2 || dm.some(isNaN) || tm.some(isNaN)) return toast('日付と時間を入れてください');
+        const d = new Date(dm[0], dm[1] - 1, dm[2], tm[0], tm[1]);
+        const slot = data.slots.find(s => new Date(s.start).getTime() === d.getTime());
+        const label = (d.getMonth() + 1) + '/' + d.getDate() + '(' + '日月火水木金土'[d.getDay()] + ') ' + d.getHours() + ':' + pad2(d.getMinutes());
+        choose(d.toISOString(), label, !!slot);
+      } }, 'この日時で入れる')),
+  ].flat(Infinity).filter(Boolean));
+  modalBox().classList.add('show');
 }
 
 let last = null;
@@ -279,6 +371,23 @@ function mockApi(action, data) {
   if (action === 'adminDone') { find().state = '受講済'; return { message: data.target.name + ' 様を受講済にしました（見本）' }; }
   if (action === 'adminUndo') { find().state = '予約'; return { message: data.target.name + ' 様を予約に戻しました（見本）' }; }
   if (action === 'adminNote') { find().notes.unshift({ day: '今日', memo: data.memo }); return { message: data.target.name + ' 様のカルテを保存しました（見本）' }; }
+  if (action === 'adminSlots') {
+    const l = find(), slots = [];
+    for (let i = 1; i <= 20; i++) {
+      const x = new Date(); x.setDate(x.getDate() + i);
+      ['9:00', '10:30', '12:00', '13:30', '15:00'].forEach(t => {
+        const hm = t.split(':').map(Number);
+        const s = new Date(x.getFullYear(), x.getMonth(), x.getDate(), hm[0], hm[1]);
+        if ((i + hm[0]) % 3) slots.push({ start: s.toISOString(), day: (s.getMonth() + 1) + '/' + s.getDate() + '(' + '日月火水木金土'[s.getDay()] + ')', time: t });
+      });
+    }
+    return { name: l.name, ticket: l.after ? { type: l.type, remaining: l.after } : null, bookings: l.name === '佐藤 京' ? [{ day: '11/2(月)', time: '10:30' }] : [],
+      types: ['プライベート1回券', 'プライベート4回券', 'プライベート8回券', 'プライベート10回券', '体験'], slots };
+  }
+  if (action === 'adminBook') {
+    const s = new Date(data.start);
+    return { message: data.target.name + ' 様の次回 ' + (s.getMonth() + 1) + '/' + s.getDate() + ' ' + s.getHours() + ':' + ('0' + s.getMinutes()).slice(-2) + '〜 を入れました（見本）' };
+  }
   if (data.offset === 1) return { day, offset: 1, lessons: [] };
   mockData.forEach(l => { l.canDone = l.state === '予約'; l.canUndo = l.state === '受講済'; });
   return { day, offset: 0, lessons: mockData };
