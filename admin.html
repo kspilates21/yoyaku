@@ -114,7 +114,7 @@ function ticketText(l) {
   if (!l.type) return 'チケット未入力';
   if (!l.count) return l.type;
   const no = l.no ? '　' + l.no + '/' + l.count + '回目' : '';
-  const after = l.after != null ? '（このあと' + l.after + '回）' : '';
+  const after = l.after != null ? '　残り' + l.after + '回' : '';
   return l.type + no + after;
 }
 
