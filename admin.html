@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>今日のお客様</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  :root {
+    --bg: #f6f5f1; --card: #fff; --ink: #2f3a33; --muted: #7a847d; --line: #e4e2db;
+    --accent: #5f7f68; --accent-ink: #fff; --soft: #e8efe9; --warn: #b5643f; --warn-soft: #f8ece6;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif; font-size: 16px; line-height: 1.6; }
+  main { max-width: 520px; margin: 0 auto; padding: 16px 16px 48px; }
+  h1 { font-size: 20px; margin: 4px 0 4px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-bottom: 12px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .tabs { display: flex; gap: 8px; margin: 8px 0 12px; }
+  .tabs button { flex: 1; background: var(--card); border: 1px solid var(--line); color: var(--ink); }
+  .tabs button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button { font: inherit; border: 0; border-radius: 12px; padding: 10px 14px; cursor: pointer; }
+  .reload { background: transparent; color: var(--accent); padding: 4px 0; font-size: 14px; }
+  .time { font-size: 20px; font-weight: 700; min-width: 64px; }
+  .name { font-size: 18px; font-weight: 700; flex: 1; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .tag { display: inline-block; font-size: 13px; padding: 2px 10px; border-radius: 10px; background: var(--soft); color: var(--accent); }
+  .tag.warn { background: var(--warn-soft); color: var(--warn); font-weight: 600; }
+  .ticket { margin-top: 6px; }
+  .note { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 15px; }
+  .note .clip { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .note .day { color: var(--muted); font-size: 13px; }
+  .older { margin-top: 8px; }
+  .center { text-align: center; padding: 48px 0; }
+  .demo { background: var(--warn-soft); color: var(--warn); font-size: 13px; padding: 6px 10px; border-radius: 8px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<main id="app"><div class="center muted">読み込み中…</div></main>
+
+<script>
+// 白花さんの管理画面（読むだけ）。作り方.md の「管理画面」の手順で出てくる LIFF ID を入れる
+const CONFIG = {
+  LIFF_ID: '2012122503-nj9FTrLu',  // LINE Developers で作った「管理画面」用の LIFF ID（お客様の画面とは別・2026-10-26）
+  API_URL: 'https://script.google.com/macros/s/AKfycby9YSQQD-oZrZcLHkX0AXrpJYNrxFB2-smI0yVLpYZcgHnY3nyffpC764c-BJEDLKCgRQ/exec',  // index.html と同じ
+};
+
+const params = new URLSearchParams(location.search);
+const MOCK = params.get('mock'); // ?mock=1 で、架空のお客様の表示だけ試せる（シートには行かない）
+let idToken = null;
+let offset = 0;
+
+const $app = document.getElementById('app');
+const el = (tag, attrs, ...kids) => {
+  const e = document.createElement(tag);
+  Object.entries(attrs || {}).forEach(([k, v]) => k.startsWith('on') ? e.addEventListener(k.slice(2), v) : e.setAttribute(k, v));
+  kids.flat().forEach(k => k != null && e.append(k instanceof Node ? k : document.createTextNode(String(k))));
+  return e;
+};
+const show = (...nodes) => {
+  const banner = MOCK ? el('div', { class: 'demo' }, '見本：架空のお客様です') : null;
+  $app.replaceChildren(...[banner, nodes].flat(Infinity).filter(n => n != null));
+};
+
+async function api(action, data) {
+  if (MOCK) return mockDay(data.offset);
+  const res = await fetch(CONFIG.API_URL, { method: 'POST', body: JSON.stringify(Object.assign({ action, idToken }, data)) });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error);
+  return json.data;
+}
+
+async function start() {
+  try {
+    if (!MOCK) {
+      if (!CONFIG.LIFF_ID) return show(el('div', { class: 'card' }, '設定がまだです（LIFF_ID が空です）'));
+      await liff.init({ liffId: CONFIG.LIFF_ID });
+      if (!liff.isLoggedIn()) return liff.login();
+      idToken = liff.getIDToken();
+    }
+    load(0);
+  } catch (e) {
+    show(el('div', { class: 'card' }, e.message || '読み込めませんでした'));
+  }
+}
+
+async function load(n) {
+  offset = n;
+  show(header(null), el('div', { class: 'center muted' }, '読み込み中…'));
+  try {
+    render(await api('adminDay', { offset: n }));
+  } catch (e) {
+    show(header(null), el('div', { class: 'card' }, e.message || '読み込めませんでした'));
+  }
+}
+
+function header(data) {
+  const tab = (n, label) => el('button', { class: n === offset ? 'on' : '', onclick: () => load(n) }, label);
+  const pays = data ? data.lessons.filter(l => l.pay.kind === 'pay' || l.pay.kind === 'check').length : 0;
+  return [
+    el('div', { class: 'row' },
+      el('h1', {}, data ? data.day + ' のお客様' : 'お客様'),
+      el('button', { class: 'reload', onclick: () => load(offset) }, '更新')),
+    el('div', { class: 'tabs' }, tab(0, '今日'), tab(1, '明日')),
+    data ? el('div', { class: 'muted', style: 'margin-bottom:10px' },
+      data.lessons.length + '名' + (pays ? '（お支払い・確認 ' + pays + '）' : '')) : null,
+  ];
+}
+
+function ticketText(l) {
+  if (!l.type) return 'チケット未入力';
+  if (!l.count) return l.type;
+  const no = l.no ? '　' + l.no + '/' + l.count + '回目' : '';
+  const after = l.after != null ? '（このあと' + l.after + '回）' : '';
+  return l.type + no + after;
+}
+
+function lessonCard(l) {
+  let open = false;
+  const first = l.notes[0];
+  const noteBox = el('div', { class: 'note' });
+  const drawNotes = () => noteBox.replaceChildren(...[
+    first
+      ? [el('div', { class: 'day' }, '前回 ' + first.day), el('div', { class: open ? '' : 'clip' }, first.memo)]
+      : el('div', { class: 'muted' }, 'カルテ：メモなし'),
+    open ? l.notes.slice(1).map(n => el('div', { class: 'older' }, el('div', { class: 'day' }, n.day), el('div', {}, n.memo))) : null,
+    !open && (l.notes.length > 1 || (first && first.memo.length > 40)) ? el('div', { class: 'muted' }, 'タップで全文・前々回') : null,
+  ].flat(Infinity).filter(n => n != null));
+  drawNotes();
+  const tags = [
+    l.pay.kind === 'pay' ? el('span', { class: 'tag warn' }, l.pay.label) : null,
+    l.pay.kind === 'check' ? el('span', { class: 'tag warn' }, '要確認：' + l.pay.label) : null,
+    l.pay.kind === 'paid' ? el('span', { class: 'tag' }, l.pay.label) : null,
+    l.last ? el('span', { class: 'tag warn' }, '最終回（口頭でご案内）') : null,
+    l.state !== '予約' ? el('span', { class: 'tag' }, l.state) : null,
+  ].filter(Boolean);
+  return el('div', { class: 'card', onclick: () => { open = !open; drawNotes(); } },
+    el('div', { class: 'row' },
+      el('div', { class: 'time' }, l.time || '時間未入力'),
+      el('div', { class: 'name' }, l.name)),
+    el('div', { class: 'ticket muted' }, ticketText(l)),
+    tags.length ? el('div', { class: 'tags' }, tags) : null,
+    l.memo ? el('div', { class: 'muted' }, 'シートのメモ：' + l.memo) : null,
+    noteBox);
+}
+
+function render(data) {
+  show(header(data),
+    data.lessons.length ? data.lessons.map(lessonCard) : el('div', { class: 'card muted' }, 'レッスンはありません'));
+}
+
+// 見本（?mock=1）。架空のお客様
+function mockDay(n) {
+  const d = new Date(); d.setDate(d.getDate() + n);
+  const day = (d.getMonth() + 1) + '/' + d.getDate() + '(' + '日月火水木金土'[d.getDay()] + ')';
+  if (n === 1) return { day, offset: 1, lessons: [] };
+  return { day, offset: 0, lessons: [
+    { time: '9:00', name: '山田 花子', type: 'プライベート4回券', state: '予約', memo: '', no: 4, count: 4, after: 0, last: true,
+      pay: { kind: 'none', label: '' }, notes: [{ day: '10/20(火)', memo: '右肩の前だけ伸ばすように。' }] },
+    { time: '12:00', name: '佐藤 京', type: 'プライベート10回券', state: '予約', memo: '', no: 1, count: 10, after: 9, last: false,
+      pay: { kind: 'pay', label: 'お支払い（プライベート10回券）' },
+      notes: [{ day: '10/25(日)', memo: '腹筋が良くなり、太もも前の使い方も良くなってきた。課題はハムストリング・臀筋の弱さと、両腕を後ろに引いたときの肩の硬さ。次回は腕を後ろに引く動き。' },
+        { day: '10/17(土)', memo: '骨盤をやや後傾でキープ。' }] },
+    { time: null, name: '田中 新', type: '体験', state: '予約', memo: '予約ページから', no: null, count: null, after: null, last: false,
+      pay: { kind: 'pay', label: 'お支払い（体験）' }, notes: [] },
+  ] };
+}
+
+start();
+</script>
+</body>
+</html>
