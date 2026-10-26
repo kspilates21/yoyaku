@@ -190,7 +190,7 @@ function renderHome() {
     s.bookings.length ? s.bookings.map(bookingCard) : el('div', { class: 'card muted' }, '今のご予約はありません'),
     el('div', { style: 'height:8px' }),
     el('button', { class: 'primary', onclick: renderSlots }, '予約する'),
-    s.cancelHours > 0 ? el('p', { class: 'muted' }, '変更・キャンセルは開始の' + s.cancelHours + '時間前まで、この画面からできます。') : null);
+    s.cancelHours > 0 ? el('p', { class: 'muted' }, '変更・キャンセルは前日の20時まで、この画面からできます。') : null);
 }
 
 // 予約する・日時を変更する（{from} が変更前の予約）
