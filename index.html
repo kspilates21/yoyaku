@@ -62,7 +62,7 @@ const CONFIG = {
 
 const params = new URLSearchParams(location.search);
 const DEMO = params.get('demo'); // ?demo=hanako のように開くと、架空のお客様として試せる
-const API_URL = params.get('api') || CONFIG.API_URL;
+const API_URL = CONFIG.API_URL; // 通信先は固定（URL の ?api= では変えられないようにする・2026-10-27）
 let idToken = null;
 let state = null;
 
