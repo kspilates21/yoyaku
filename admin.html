@@ -296,7 +296,9 @@ function pickSlot(l, data, st) {
     const d = days[days.length - 1];
     if (d && d.day === s.day) d.slots.push(s); else days.push({ day: s.day, slots: [s] });
   });
-  const shown = st.more ? days : days.slice(0, 14);
+  // 最初は1ヶ月先まで。もっと先（60日まで）はボタンで出す
+  const monthLater = new Date(); monthLater.setMonth(monthLater.getMonth() + 1); monthLater.setHours(23, 59, 59);
+  const shown = st.more ? days : days.filter(d => new Date(d.slots[0].start) <= monthLater);
 
   const typeSelect = el('select', { style: 'width:100%;margin-top:6px' },
     el('option', { value: '' }, 'あとで入れる（チケット種別は空）'),
@@ -373,7 +375,7 @@ function mockApi(action, data) {
   if (action === 'adminNote') { find().notes.unshift({ day: '今日', memo: data.memo }); return { message: data.target.name + ' 様のカルテを保存しました（見本）' }; }
   if (action === 'adminSlots') {
     const l = find(), slots = [];
-    for (let i = 1; i <= 20; i++) {
+    for (let i = 1; i <= 60; i++) {
       const x = new Date(); x.setDate(x.getDate() + i);
       ['9:00', '10:30', '12:00', '13:30', '15:00'].forEach(t => {
         const hm = t.split(':').map(Number);
