@@ -190,6 +190,15 @@ function ticketText(l) {
   return l.type + no + after;
 }
 
+// 次の予約が入っているか（キャンセルの行には出さない）
+function nextTag(l) {
+  if (!l.next || l.state === 'キャンセル') return null;
+  if (!l.next.length) return el('span', { class: 'tag warn' }, '次回の予約なし');
+  const n = l.next[0];
+  const more = l.next.length > 1 ? '（ほか' + (l.next.length - 1) + '件）' : '';
+  return el('span', { class: 'tag' }, '次回 ' + n.day + (n.time ? ' ' + n.time : '') + more);
+}
+
 function lessonCard(l) {
   const key = keyOf(l);
   const open = opened.has(key);
@@ -201,6 +210,7 @@ function lessonCard(l) {
     l.pay.kind === 'check' ? el('span', { class: 'tag warn' }, '要確認：' + l.pay.label) : null,
     l.pay.kind === 'paid' ? el('span', { class: 'tag' }, l.pay.label) : null,
     l.last ? el('span', { class: 'tag warn' }, '最終回（口頭でご案内）') : null,
+    nextTag(l),
   ].filter(Boolean);
 
   const notes = el('div', { class: 'note' },
@@ -357,13 +367,13 @@ const mockData = (() => {
   const t = (time, name) => ({ row: 0, date: ymd(d), time, name });
   return [
     { time: '9:00', name: '山田 花子', type: 'プライベート4回券', state: '予約', memo: '', no: 4, count: 4, after: 0, last: true,
-      pay: { kind: 'none', label: '' }, notes: [{ day: '10/20(火)', memo: '右肩の前だけ伸ばすように。' }], target: t('9:00', '山田 花子') },
+      pay: { kind: 'none', label: '' }, notes: [{ day: '10/20(火)', memo: '右肩の前だけ伸ばすように。' }], next: [], target: t('9:00', '山田 花子') },
     { time: '12:00', name: '佐藤 京', type: 'プライベート10回券', state: '予約', memo: '', no: 1, count: 10, after: 9, last: false,
       pay: { kind: 'pay', label: 'お支払い（プライベート10回券）' },
       notes: [{ day: '10/25(日)', memo: '腹筋が良くなり、太もも前の使い方も良くなってきた。課題はハムストリング・臀筋の弱さと、両腕を後ろに引いたときの肩の硬さ。次回は腕を後ろに引く動き。' },
-        { day: '10/17(土)', memo: '骨盤をやや後傾でキープ。' }], target: t('12:00', '佐藤 京') },
+        { day: '10/17(土)', memo: '骨盤をやや後傾でキープ。' }], next: [{ day: '11/10(火)', time: '10:30' }, { day: '11/17(火)', time: '10:30' }], target: t('12:00', '佐藤 京') },
     { time: null, name: '田中 新', type: '体験', state: '予約', memo: '予約ページから', no: null, count: null, after: null, last: false,
-      pay: { kind: 'pay', label: 'お支払い（体験）' }, notes: [], target: t('', '田中 新') },
+      pay: { kind: 'pay', label: 'お支払い（体験）' }, notes: [], next: [], target: t('', '田中 新') },
   ];
 })();
 function mockApi(action, data) {
