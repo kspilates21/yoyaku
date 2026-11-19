@@ -241,6 +241,20 @@ function actions(l, when) {
     if (yes) write('adminDone', { target: l.target, reqId: newId() });
   } }, '受講済にする'));
   if (l.state !== 'キャンセル') box.append(el('button', { class: 'outline', onclick: () => openBooking(l) }, '次回の予約を入れる'));
+  if (l.canPay) box.append(el('button', { class: 'outline', onclick: async () => {
+    const types = (last && last.types) || [];
+    const typeSel = el('select', { style: 'width:100%;margin-top:8px' }, el('option', { value: '' }, 'チケット種別を選ぶ'), types.map(t => el('option', { value: t }, t)));
+    if (l.type && types.indexOf(l.type) >= 0) typeSel.value = l.type;
+    const methodSel = el('select', { style: 'width:100%;margin-top:8px' }, el('option', { value: '' }, '支払い方法を選ぶ'), ['カード', 'PayPay', '銀行振込'].map(m => el('option', { value: m }, m)));
+    const yes = await ask('お支払いを入れますか？', [
+      el('div', { class: 'muted', style: 'margin-top:6px' }, l.name + ' 様　' + when),
+      typeSel, methodSel,
+      el('div', { class: 'hint', style: 'margin-top:8px' }, '回数券は購入記録に1行、1回券・体験などはレッスンのメモに入ります。銀行振込は「入金未確認」になります。間違えたら白花さんに伝えてください'),
+    ], '入れる');
+    if (!yes) return;
+    if (!typeSel.value || !methodSel.value) return toast('チケット種別と支払い方法を選んでください');
+    write('adminPay', { target: l.target, type: typeSel.value, method: methodSel.value, reqId: newId() });
+  } }, 'お支払いを入れる'));
   if (!d) box.append(el('button', { class: 'outline', onclick: () => { drafts[key] = { text: '', reqId: newId() }; rerender(); } }, 'カルテを書く'));
   if (d) {
     const area = el('textarea', { placeholder: 'キーボードのマイクを押して話すと入力できます' });
