@@ -337,7 +337,7 @@ function pickSlot(l, data, st) {
     !st.more && days.length > shown.length
       ? el('button', { class: 'reload', style: 'margin-top:10px', onclick: () => { st.more = true; pickSlot(l, data, st); } }, 'もっと先の日を見る')
       : null,
-    el('div', { class: 'sub' },
+    data.role === 'staff' ? el('div', { class: 'hint', style: 'margin-top:10px' }, '担当枠（土曜）の空きだけ選べます。ほかの曜日・時間をご希望のお客様は、LINE予約から取ってもらうか、白花さんに伝えてください') : el('div', { class: 'sub' },
       el('div', { style: 'font-weight:600' }, 'ほかの時間（お客様のご希望で枠とずれるとき）'),
       el('div', { class: 'custom' }, dateIn, timeIn),
       el('button', { class: 'outline', style: 'margin-top:8px', onclick: () => {
