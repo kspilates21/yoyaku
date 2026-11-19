@@ -223,7 +223,7 @@ function lessonCard(l) {
   return el('div', { class: 'card', onclick: () => { open ? opened.delete(key) : opened.add(key); rerender(); } },
     el('div', { class: 'row' },
       el('div', { class: 'time' }, l.time || '時間未入力'),
-      el('div', { class: 'name' }, l.name)),
+      el('div', { class: 'name' }, l.name, l.by ? el('span', { class: 'tag' }, '担当 ' + l.by) : null)),
     el('div', { class: 'ticket muted' }, ticketText(l)),
     tags.length ? el('div', { class: 'tags' }, tags) : null,
     l.memo ? el('div', { class: 'muted' }, 'シートのメモ：' + l.memo) : null,
@@ -332,7 +332,7 @@ function pickSlot(l, data, st) {
       : null,
     shown.length ? shown.map(d => [
       el('div', { class: 'slotday' }, d.day),
-      el('div', { class: 'slots' }, d.slots.map(s => el('button', { onclick: () => choose(s.start, s.day + ' ' + s.time, true) }, s.time))),
+      el('div', { class: 'slots' }, d.slots.map(s => el('button', { onclick: () => choose(s.start, s.day + ' ' + s.time, true) }, s.time + (s.by ? '（' + s.by + '）' : '')))),
     ]) : el('div', { class: 'muted', style: 'margin-top:12px' }, '空き枠がありません'),
     !st.more && days.length > shown.length
       ? el('button', { class: 'reload', style: 'margin-top:10px', onclick: () => { st.more = true; pickSlot(l, data, st); } }, 'もっと先の日を見る')

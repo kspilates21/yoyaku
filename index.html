@@ -168,6 +168,7 @@ function bookingCard(b) {
   const when = b.day + ' ' + (b.time ? b.time + '〜' : '');
   return el('div', { class: 'card' },
     el('div', { style: 'font-weight:600' }, when),
+    b.by ? el('div', { class: 'muted' }, '担当：' + b.by) : null,
     el('div', { class: 'muted' }, b.type ? b.type + (b.no ? '（' + b.no + (b.count > 1 ? '/' + b.count : '') + '回目）' : '') : 'チケットはスタジオで確認します'),
     b.canCancel
       ? el('div', { class: 'actions-row' },
@@ -208,7 +209,7 @@ async function renderSlots(from) {
     slots.length ? Object.entries(byDay).map(([day, list]) => [
       el('h2', {}, day),
       el('div', { class: 'slots' }, list.map(s => el('button', { onclick: async () => {
-        const to = s.day + ' ' + s.time + '〜';
+        const to = s.day + ' ' + s.time + '〜' + (s.by ? '（担当：' + s.by + '）' : '');
         if (from) {
           if (!await ask('この日時に変更しますか？', from.day + ' ' + from.time + '〜 → ' + to, '変更する')) return;
           try { loading('変更しています…'); route(await api('change', { id: from.id, start: s.start })); }
@@ -218,7 +219,7 @@ async function renderSlots(from) {
         if (!await ask('この日時で予約しますか？', to, '予約する')) return;
         try { loading('予約しています…'); route(await api('book', { start: s.start })); }
         catch (e) { toast(e.message); renderSlots(); }
-      } }, s.time)))
+      } }, s.time, s.by ? el('small', { style: 'display:block;font-size:11px;font-weight:400;opacity:.75' }, '担当 ' + s.by) : null)))
     ]) : el('div', { class: 'card muted' }, '今は空いている枠がありません。LINE でご相談ください。'));
 }
 
