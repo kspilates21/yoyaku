@@ -206,6 +206,7 @@ async function renderSlots(from) {
     el('button', { class: 'back', onclick: renderHome }, '← もどる'),
     el('h1', {}, from ? '新しい日時を選ぶ' : '日時を選ぶ'),
     from ? el('div', { class: 'card muted' }, '今のご予約：' + from.day + ' ' + from.time + '〜') : null,
+    slots.some(x => x.by) ? el('div', { class: 'card muted' }, '※「担当 Asuka」の枠は、男性のお客様はセミプライベートのみの受付です。マタニティの方は、担当のご相談をお願いします。') : null,
     slots.length ? Object.entries(byDay).map(([day, list]) => [
       el('h2', {}, day),
       el('div', { class: 'slots' }, list.map(s => el('button', { onclick: async () => {
